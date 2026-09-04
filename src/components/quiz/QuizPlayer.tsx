@@ -10,8 +10,8 @@ import confetti from 'canvas-confetti'
 interface QuizPlayerProps {
   form: QuizForm
   isEmbed?: boolean
-  forcedStepIndex?: number // Allows builder preview to jump directly to any question
-  onStepChange?: (stepIndex: number) => void // Notifies builder when step changes
+  forcedStepIndex?: number
+  onStepChange?: (stepIndex: number) => void
 }
 
 export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChange }: QuizPlayerProps) {
@@ -24,34 +24,36 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
   const [selectedOptId, setSelectedOptId] = useState<string | null>(null)
 
   // Dynamic theme colors
-  const primaryColor = form.theme.primaryColor || '#c58e41'
-  const bgColor = form.theme.backgroundColor || '#0b0e14'
-  const cardBg = form.theme.cardBackground || '#131822'
-  const textColor = form.theme.textColor || '#ffffff'
+  const primaryColor = form.theme?.primaryColor || '#c58e41'
+  const bgColor = form.theme?.backgroundColor || '#0b0e14'
+  const cardBg = form.theme?.cardBackground || '#131822'
+  const textColor = form.theme?.textColor || '#ffffff'
 
   // Capture UTM parameters from URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search)
-      const utms: Record<string, string> = {}
-      urlParams.forEach((value, key) => {
-        if (key.startsWith('utm_')) {
-          utms[key] = value
-        }
-      })
-      setUtmParams(utms)
+      try {
+        const urlParams = new URLSearchParams(window.location.search)
+        const utms: Record<string, string> = {}
+        urlParams.forEach((value, key) => {
+          if (key.startsWith('utm_')) {
+            utms[key] = value
+          }
+        })
+        setUtmParams(utms)
+      } catch {}
     }
   }, [])
 
   // Sync with builder preview if forcedStepIndex is provided
   useEffect(() => {
-    if (typeof forcedStepIndex === 'number' && forcedStepIndex >= 0 && forcedStepIndex < form.questions.length) {
+    if (typeof forcedStepIndex === 'number' && forcedStepIndex >= 0 && forcedStepIndex < (form.questions?.length || 0)) {
       setCurrentStepIndex(forcedStepIndex)
       setIsCompleted(false)
       setSelectedOptId(null)
       setTextInput('')
     }
-  }, [forcedStepIndex, form.questions.length])
+  }, [forcedStepIndex, form.questions?.length])
 
   // Trigger confetti on completion
   useEffect(() => {
@@ -66,15 +68,18 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
     }
   }, [isCompleted])
 
-  const safeStepIndex = Math.min(Math.max(0, currentStepIndex), Math.max(0, form.questions.length - 1))
-  const currentQuestion: QuizQuestion | undefined = form.questions[safeStepIndex]
-  const totalQuestions = form.questions.length
+  const totalQuestions = form.questions?.length || 0
+  const safeStepIndex = totalQuestions > 0 
+    ? Math.min(Math.max(0, currentStepIndex), totalQuestions - 1) 
+    : 0
+
+  const currentQuestion: QuizQuestion | undefined = form.questions?.[safeStepIndex]
   const progressPercent = totalQuestions > 0 ? Math.min(100, Math.round(((safeStepIndex + 1) / totalQuestions) * 100)) : 100
 
   const handleNextStep = (nextId?: string) => {
     setSelectedOptId(null)
 
-    if (nextId) {
+    if (nextId && form.questions) {
       const targetIndex = form.questions.findIndex(q => q.id === nextId)
       if (targetIndex !== -1) {
         setHistory(prev => [...prev, targetIndex])
@@ -126,7 +131,6 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
 
     const nextTarget = option.nextQuestionId || currentQuestion.nextQuestionId
 
-    // 140ms snappy transition with visible active state
     setTimeout(() => {
       handleNextStep(nextTarget)
     }, 140)
@@ -149,19 +153,22 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
     const leadName = answers.q4 || answers.nome || answers.name || Object.values(answers)[0] || 'Lead Qualificado'
     const leadPhone = answers.q5 || answers.telefone || answers.whatsapp || answers.phone || '(11) 99999-9999'
 
-    // Save lead to storage
-    saveLead({
-      id: `lead_${Date.now()}`,
-      formId: form.id,
-      clientName: form.clientName,
-      name: String(leadName),
-      phone: String(leadPhone),
-      answers: answers,
-      utmParams: utmParams,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      formTitle: form.title,
-      status: 'Novo'
-    })
+    try {
+      saveLead({
+        id: `lead_${Date.now()}`,
+        formId: form.id,
+        formTitle: form.title,
+        clientName: form.clientName,
+        name: String(leadName),
+        phone: String(leadPhone),
+        answers: answers,
+        utmParams: utmParams,
+        createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        status: 'Novo'
+      })
+    } catch (e) {
+      console.error('Error saving lead:', e)
+    }
   }
 
   const handleRestart = () => {
@@ -176,10 +183,10 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
 
   // Build WhatsApp URL with qualification summary
   const buildWhatsAppUrl = () => {
-    const rawNumber = form.thankYouScreen.whatsappNumber || '5511999999999'
+    const rawNumber = form.thankYouScreen?.whatsappNumber || '5511999999999'
     const cleanNumber = rawNumber.replace(/\D/g, '')
     
-    let message = form.thankYouScreen.whatsappMessageTemplate || 
+    let message = form.thankYouScreen?.whatsappMessageTemplate || 
       'Olá! Acabei de responder ao formulário {nome} e gostaria de prosseguir com o atendimento.'
 
     const leadName = answers.q4 || answers.nome || answers.name || Object.values(answers)[0] || 'Cliente'
@@ -227,7 +234,7 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
           )}
 
           {/* Social Proof Badge */}
-          {form.theme.socialProofBadge && (
+          {form.theme?.socialProofBadge && (
             <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/5 border border-white/10 text-slate-300">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
               <span>{form.theme.socialProofBadge}</span>
@@ -236,7 +243,7 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
         </div>
 
         {/* Dynamic Progress Bar */}
-        {form.theme.showProgressBar && !isCompleted && (
+        {form.theme?.showProgressBar && !isCompleted && totalQuestions > 0 && (
           <div className="space-y-1.5 pt-1">
             <div className="flex justify-between text-[11px] opacity-60 font-semibold">
               <span>Pergunta {safeStepIndex + 1} de {totalQuestions}</span>
@@ -386,15 +393,15 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
 
             <div className="space-y-2">
               <h2 className="text-2xl sm:text-3xl font-extrabold">
-                {form.thankYouScreen.title}
+                {form.thankYouScreen?.title || 'Obrigado!'}
               </h2>
               <p className="opacity-80 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-                {form.thankYouScreen.subtitle}
+                {form.thankYouScreen?.subtitle || 'Recebemos suas respostas.'}
               </p>
             </div>
 
             {/* Summary Card */}
-            {form.thankYouScreen.showSummary && Object.keys(answers).length > 0 && (
+            {form.thankYouScreen?.showSummary && Object.keys(answers).length > 0 && (
               <div 
                 className="p-4 rounded-xl border text-left max-w-sm mx-auto text-xs space-y-1.5 shadow-sm"
                 style={{
@@ -420,7 +427,7 @@ export function QuizPlayer({ form, isEmbed = false, forcedStepIndex, onStepChang
                 className="inline-flex items-center justify-center gap-2.5 w-full py-4 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-lg shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
               >
                 <MessageCircle className="w-5 h-5 fill-current" />
-                <span>{form.thankYouScreen.ctaText}</span>
+                <span>{form.thankYouScreen?.ctaText || 'Falar no WhatsApp'}</span>
               </a>
               <p className="text-[11px] opacity-50 mt-2">
                 🔒 Seus dados estão seguros e serão utilizados apenas para este atendimento.
